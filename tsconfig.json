@@ -1,0 +1,13 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": false,
+		"lib": ["ES2024", "WebWorker"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"noEmit": true,
+		"strict": true,
+		"target": "ES2024"
+	},
+	"include": ["dist/**/*.js", "worker.test.js"]
+}

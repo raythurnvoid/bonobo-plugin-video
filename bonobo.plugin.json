@@ -1,0 +1,8 @@
+{
+	"schemaVersion": 1,
+	"name": "video",
+	"displayName": "Video",
+	"version": "0.1.0",
+	"description": "Generates diarized transcripts and summaries for uploaded videos and audio recordings.",
+	"artifact": "dist/bonobo.artifact.json"
+}
