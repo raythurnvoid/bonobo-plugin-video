@@ -4,6 +4,7 @@
 	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
+		"build:artifact": "node scripts/build-artifact.mjs",
 		"lint": "eslint dist/**/*.js worker.test.js",
 		"typecheck": "tsc --noEmit",
 		"check": "pnpm run typecheck && pnpm run lint",
