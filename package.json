@@ -7,7 +7,9 @@
 		"lint": "eslint dist/**/*.js worker.test.js",
 		"typecheck": "tsc --noEmit",
 		"check": "pnpm run typecheck && pnpm run lint",
-		"test": "vitest run"
+		"test": "vitest run",
+		"test:modal": "pwsh -NoProfile -File scripts/modal-test.ps1",
+		"deploy:modal": "pwsh -NoProfile -File scripts/modal-cli.ps1 deploy modal/media_audio_extractor.py"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.1",

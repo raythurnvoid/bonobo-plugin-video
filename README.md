@@ -27,6 +27,22 @@ Publisher-tier secrets mean the publisher's Mistral/OpenAI/Modal accounts proces
 
 Mistral audio transcription pricing is about $0.003 per minute of audio (Voxtral Mini Transcribe).
 
+## Modal audio extractor
+
+The Modal component the worker calls for video uploads lives in this repository under `modal/`:
+
+- `modal/media_audio_extractor.py` — the deployable Modal app (`bonobo-senate-press-media-audio`). `POST /extract-audio` takes `{sourceUrl, contentType?, maxBytes}` with a Bearer token checked against the `BONOBO_SENATE_PRESS` Modal secret, streams the video down, extracts the audio track with ffmpeg (`-vn`, AAC stream copy or 96k AAC transcode to m4a), stores it in the `bonobo-senate-press-media-audio-cache` volume, and returns `{audioUrl, expiresAt, bytes, durationSeconds}` where `audioUrl` is an HMAC-signed short-TTL `GET /audio/<id>` link that Mistral fetches directly. `GET /health` returns `{ "ok": true }`.
+- `modal/test_media_audio_extractor.py` — pytest suite (ffmpeg and network are faked; no ffmpeg needed in the test image).
+
+Python is not installed on the development machine; both the Modal CLI and pytest run Docker-wrapped:
+
+```powershell
+pnpm run test:modal
+pnpm run deploy:modal
+```
+
+The wrapper scripts under `scripts/` mount this repository as `/workspace` and reuse the Modal auth config from `~/.modal-cli`, so a standalone clone of this repository can test and deploy the extractor on its own. The deployed origin is what the `MODAL_MEDIA_AUDIO_URL` publisher secret points at (full `/extract-audio` endpoint URL), with `MODAL_TOKEN` holding the Bearer token.
+
 ## Checks
 
 ```powershell
@@ -34,4 +50,4 @@ pnpm run check
 pnpm run test
 ```
 
-The published plugin entrypoint is `dist/backend/worker.js`, described by `bonobo.plugin.json` and `dist/bonobo.artifact.json`. Test fixtures under `test/fixtures/` are real Mistral API responses for synthetic TTS audio and are not part of the published artifact.
+The published plugin entrypoint is `dist/backend/worker.js`, described by `bonobo.plugin.json` and `dist/bonobo.artifact.json`. Test fixtures under `test/fixtures/` are real Mistral API responses for synthetic TTS audio and are not part of the published artifact; the same applies to the `modal/` and `scripts/` directories.
