@@ -1,10 +1,9 @@
 {
 	"schemaVersion": 1,
-	"plugin": {
-		"name": "video",
-		"displayName": "Video",
-		"version": "0.1.0"
-	},
+	"name": "video",
+	"displayName": "Video",
+	"version": "0.1.0",
+	"description": "Generates diarized transcripts and summaries for uploaded videos and audio recordings.",
 	"compatibility": {
 		"bonoboPluginRuntime": "1"
 	},
@@ -46,6 +45,5 @@
 			"bytes": 12597,
 			"contentType": "application/javascript"
 		}
-	],
-	"provenance": null
+	]
 }

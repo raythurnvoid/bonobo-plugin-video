@@ -4,5 +4,46 @@
 	"displayName": "Video",
 	"version": "0.1.0",
 	"description": "Generates diarized transcripts and summaries for uploaded videos and audio recordings.",
-	"artifact": "dist/bonobo.artifact.json"
+	"compatibility": {
+		"bonoboPluginRuntime": "1"
+	},
+	"backend": {
+		"entry": "dist/backend/worker.js",
+		"moduleName": "plugin.js",
+		"compatibilityDate": "2026-07-01",
+		"compatibilityFlags": ["nodejs_compat"]
+	},
+	"events": [
+		{
+			"type": "files.upload.completed",
+			"contentTypes": [
+				"video/mp4",
+				"video/webm",
+				"video/mpeg",
+				"video/quicktime",
+				"audio/mpeg",
+				"audio/wav",
+				"audio/x-wav",
+				"audio/mp4",
+				"audio/x-m4a",
+				"audio/flac",
+				"audio/ogg"
+			]
+		}
+	],
+	"pages": [],
+	"capabilities": ["uploads.source.read", "files.source.temporaryUrl", "files.markdown.write", "plugin.secrets.read", "outbound.fetch"],
+	"outboundOrigins": [
+		"https://api.mistral.ai",
+		"https://api.openai.com",
+		"https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run"
+	],
+	"files": [
+		{
+			"path": "dist/backend/worker.js",
+			"sha256": "sha256:d3f18f7ac16ac27e68339786faf572594b55cee24a454ecbf5c0886af798d154",
+			"bytes": 12597,
+			"contentType": "application/javascript"
+		}
+	]
 }

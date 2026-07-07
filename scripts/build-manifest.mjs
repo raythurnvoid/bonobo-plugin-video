@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// Syncs dist/bonobo.artifact.json and package.json from bonobo.plugin.json.
+// Syncs bonobo.plugin.json's files[] hashes, package.json, and dist/bonobo.plugin.json.
 //
-// bonobo.plugin.json is the single source of truth for name/displayName/version.
-// The artifact's plugin.{name,displayName,version} block is synced from it, every
+// bonobo.plugin.json at the repository root is the single source of truth. Every
 // files[] entry's sha256/bytes is recomputed from the file on disk (paths are
 // relative to the repository root, matching how the app fetches them from GitHub
-// at publish time), and package.json's version is synced too. All edits are
-// surgical string splices so the existing formatting of every file is preserved
-// byte-for-byte; when everything is already in sync the run writes nothing.
+// at publish time), package.json's version is synced from the manifest, and the
+// final manifest is byte-copied to dist/bonobo.plugin.json — the only file the
+// app fetches at publish time. All edits are surgical string splices so the
+// existing formatting of every file is preserved byte-for-byte; when everything
+// is already in sync the run writes nothing.
 //
-// Usage: pnpm build:artifact
+// Usage: pnpm build:manifest
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -20,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function fail(message) {
-	console.error(`build-artifact: ${message}`);
+	console.error(`build-manifest: ${message}`);
 	process.exit(1);
 }
 
@@ -56,52 +57,40 @@ function replaceJsonValue(text, anchorPattern, key, rawValue, context) {
 
 function writeIfChanged(relativePath, originalText, updatedText) {
 	if (updatedText === originalText) {
-		console.log(`build-artifact: "${relativePath}" already in sync`);
+		console.log(`build-manifest: "${relativePath}" already in sync`);
 		return;
 	}
 	writeFileSync(join(repoRoot, relativePath), updatedText);
-	console.log(`build-artifact: updated "${relativePath}"`);
+	console.log(`build-manifest: updated "${relativePath}"`);
 }
 
-const manifest = JSON.parse(readText("bonobo.plugin.json"));
-for (const key of ["name", "displayName", "version", "artifact"]) {
+const originalManifestText = readText("bonobo.plugin.json");
+const manifest = JSON.parse(originalManifestText);
+for (const key of ["name", "displayName", "version", "description"]) {
 	if (typeof manifest[key] !== "string" || manifest[key] === "") {
 		fail(`bonobo.plugin.json is missing "${key}"`);
 	}
 }
-
-// Artifact: sync plugin.{name,displayName,version}, recompute files[] sha256/bytes.
-const artifactPath = manifest.artifact;
-const originalArtifactText = readText(artifactPath);
-const artifact = JSON.parse(originalArtifactText);
-if (!Array.isArray(artifact.files)) {
-	fail(`"${artifactPath}" has no "files" array`);
+if (!Array.isArray(manifest.files)) {
+	fail(`bonobo.plugin.json has no "files" array`);
 }
 
-let artifactText = originalArtifactText;
-for (const key of ["name", "displayName", "version"]) {
-	artifactText = replaceJsonValue(
-		artifactText,
-		/"plugin"\s*:\s*\{/,
-		key,
-		JSON.stringify(manifest[key]),
-		`the "plugin" block of "${artifactPath}"`,
-	);
-}
-for (const file of artifact.files) {
+// Manifest: recompute files[] sha256/bytes from the files on disk.
+let manifestText = originalManifestText;
+for (const file of manifest.files) {
 	let fileBytes;
 	try {
 		fileBytes = readFileSync(join(repoRoot, file.path));
 	} catch {
-		fail(`Artifact file is missing on disk: "${file.path}"`);
+		fail(`Manifest file is missing on disk: "${file.path}"`);
 	}
 	const sha256 = `sha256:${createHash("sha256").update(fileBytes).digest("hex")}`;
 	const anchorPattern = new RegExp(`"path"\\s*:\\s*${escapeRegExp(JSON.stringify(file.path))}`);
-	const context = `the files[] entry for "${file.path}" in "${artifactPath}"`;
-	artifactText = replaceJsonValue(artifactText, anchorPattern, "sha256", JSON.stringify(sha256), context);
-	artifactText = replaceJsonValue(artifactText, anchorPattern, "bytes", String(fileBytes.byteLength), context);
+	const context = `the files[] entry for "${file.path}" in "bonobo.plugin.json"`;
+	manifestText = replaceJsonValue(manifestText, anchorPattern, "sha256", JSON.stringify(sha256), context);
+	manifestText = replaceJsonValue(manifestText, anchorPattern, "bytes", String(fileBytes.byteLength), context);
 }
-writeIfChanged(artifactPath, originalArtifactText, artifactText);
+writeIfChanged("bonobo.plugin.json", originalManifestText, manifestText);
 
 // package.json: sync the top-level version.
 const originalPackageJsonText = readText("package.json");
@@ -113,3 +102,13 @@ const packageJsonText = replaceJsonValue(
 	'the top-level object of "package.json"',
 );
 writeIfChanged("package.json", originalPackageJsonText, packageJsonText);
+
+// dist/bonobo.plugin.json: byte-copy of the final root manifest, the file the
+// app fetches at publish time. May not exist yet on the first run.
+let originalDistManifestText = null;
+try {
+	originalDistManifestText = readFileSync(join(repoRoot, "dist/bonobo.plugin.json"), "utf8");
+} catch {
+	// First run: the dist copy does not exist yet.
+}
+writeIfChanged("dist/bonobo.plugin.json", originalDistManifestText, manifestText);
