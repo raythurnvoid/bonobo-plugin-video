@@ -13,10 +13,12 @@ const NO_SPEECH_BODY = "_No speech detected._";
 const SUMMARY_SYSTEM_PROMPT =
 	"Summarize transcripts of uploaded audio and video recordings for an app file tree. Write concise, useful Markdown covering the topics, decisions, action items, and speakers when known. Return raw Markdown without wrapping it in a code fence.";
 
+/** @param {unknown} value */
 function normalizeContentType(value) {
 	return typeof value === "string" ? value.split(";")[0].trim().toLowerCase() : null;
 }
 
+/** @param {unknown} contentType */
 export function mediaKind(contentType) {
 	switch (normalizeContentType(contentType)) {
 		case "video/mp4":
@@ -44,18 +46,21 @@ function skipped() {
 	});
 }
 
+/** @param {unknown} body */
 function json(body, status = 200) {
 	return Response.json(body, { status });
 }
 
+/** @param {import("bonobo-plugin-sdk").Request} request */
 async function readEvent(request) {
 	try {
-		return await request.json();
+		return /** @type {import("bonobo-plugin-sdk").BonoboUploadCompletedEvent} */ (await request.json());
 	} catch {
 		return null;
 	}
 }
 
+/** @param {import("bonobo-plugin-sdk").BonoboUploadCompletedEvent} event */
 function getSource(event) {
 	const source = event && typeof event === "object" ? event.source : null;
 	if (!source || typeof source !== "object" || typeof source.name !== "string") {
@@ -65,6 +70,10 @@ function getSource(event) {
 	return source;
 }
 
+/**
+ * @param {import("bonobo-plugin-sdk").BonoboEnv} env
+ * @param {string} name
+ */
 async function requireSecret(env, name) {
 	const value = await env.BONOBO.secrets.get(name);
 	if (!value) {
@@ -73,6 +82,10 @@ async function requireSecret(env, name) {
 	return value;
 }
 
+/**
+ * @param {string} text
+ * @param {string} serviceName
+ */
 function parseJson(text, serviceName) {
 	try {
 		return JSON.parse(text);
@@ -81,16 +94,22 @@ function parseJson(text, serviceName) {
 	}
 }
 
+/** @param {string} text */
 function unwrapMarkdown(text) {
 	const trimmed = text.trim();
 	const fenced = trimmed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/iu);
 	return fenced?.[1]?.trim() ?? trimmed;
 }
 
+/** @param {string} text */
 function utf8ByteLength(text) {
 	return new TextEncoder().encode(text).length;
 }
 
+/**
+ * @param {string} text
+ * @param {number} maxBytes
+ */
 function truncateToBytes(text, maxBytes) {
 	const bytes = new TextEncoder().encode(text);
 	if (bytes.length <= maxBytes) {
@@ -99,12 +118,39 @@ function truncateToBytes(text, maxBytes) {
 	return new TextDecoder().decode(bytes.subarray(0, maxBytes)).replace(/�+$/u, "");
 }
 
+/** @param {number} ms */
 function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function sourceTemporaryUrl(env) {
-	const result = await env.BONOBO.files.source.temporaryUrl({
+/**
+ * POSTs JSON to one of the public Bonobo host APIs and returns the parsed response body.
+ * @param {import("bonobo-plugin-sdk").BonoboEnv} env
+ * @param {string} path
+ * @param {unknown} body
+ */
+async function hostFetch(env, path, body) {
+	const response = await fetch(`${env.BONOBO.host.apiOrigin}${path}`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${env.BONOBO.host.token}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(body),
+	});
+	if (!response.ok) {
+		throw new Error(`Host API ${path} returned HTTP ${response.status}`);
+	}
+	return parseJson(await response.text(), `Host API ${path}`);
+}
+
+/**
+ * @param {import("bonobo-plugin-sdk").BonoboEnv} env
+ * @param {string} pluginRunId
+ */
+async function sourceTemporaryUrl(env, pluginRunId) {
+	const result = await hostFetch(env, "/api/plugins/v1/source-temporary-url", {
+		pluginRunId,
 		expiresInSeconds: TEMPORARY_URL_EXPIRES_SECONDS,
 	});
 	if (!result || typeof result.url !== "string") {
@@ -113,12 +159,16 @@ async function sourceTemporaryUrl(env) {
 	return result.url;
 }
 
-async function outboundFetchWithRetry(env, args, isRetryableStatus) {
+/**
+ * @param {{ url: string, method: string, headers: Record<string, string>, body?: string }} args
+ * @param {(status: number) => boolean} isRetryableStatus
+ */
+async function fetchWithRetry(args, isRetryableStatus) {
 	let response = null;
 	for (let attempt = 0; attempt < OUTBOUND_RETRY_ATTEMPTS; attempt += 1) {
 		const lastAttempt = attempt === OUTBOUND_RETRY_ATTEMPTS - 1;
 		try {
-			response = await env.BONOBO.outbound.fetch(args);
+			response = await fetch(args.url, { method: args.method, headers: args.headers, body: args.body });
 		} catch (error) {
 			if (lastAttempt) {
 				throw error;
@@ -134,9 +184,11 @@ async function outboundFetchWithRetry(env, args, isRetryableStatus) {
 	return response;
 }
 
-export async function extractAudioUrl(env, { modalUrl, modalToken, sourceUrl, contentType }) {
-	const response = await outboundFetchWithRetry(
-		env,
+/**
+ * @param {{ modalUrl: string, modalToken: string, sourceUrl: string, contentType: string | null }} args
+ */
+export async function extractAudioUrl({ modalUrl, modalToken, sourceUrl, contentType }) {
+	const response = await fetchWithRetry(
 		{
 			url: modalUrl,
 			method: "POST",
@@ -144,19 +196,18 @@ export async function extractAudioUrl(env, { modalUrl, modalToken, sourceUrl, co
 				Authorization: `Bearer ${modalToken}`,
 				"Content-Type": "application/json",
 			},
-			bodyText: JSON.stringify({ sourceUrl, contentType, maxBytes: MODAL_MAX_SOURCE_BYTES }),
-			responseType: "text",
+			body: JSON.stringify({ sourceUrl, contentType, maxBytes: MODAL_MAX_SOURCE_BYTES }),
 		},
 		(status) => status >= 500,
 	);
-	if (!response.ok) {
-		if (response.status >= 500) {
+	if (!response || !response.ok) {
+		if (response && response.status >= 500) {
 			throw new Error(`Modal audio extraction failed (HTTP ${response.status})`);
 		}
-		throw new Error(`Modal audio extractor rejected the request (HTTP ${response.status})`);
+		throw new Error(`Modal audio extractor rejected the request (HTTP ${response?.status ?? "unknown"})`);
 	}
 
-	const payload = parseJson(response.bodyText ?? "", "Modal audio extractor");
+	const payload = parseJson(await response.text(), "Modal audio extractor");
 	if (!payload || typeof payload.audioUrl !== "string") {
 		throw new Error("Modal audio extractor returned no audio URL");
 	}
@@ -168,6 +219,10 @@ export async function extractAudioUrl(env, { modalUrl, modalToken, sourceUrl, co
 	};
 }
 
+/**
+ * @param {string} boundary
+ * @param {Array<[string, string]>} fields
+ */
 function multipartTextBody(boundary, fields) {
 	const parts = fields.map(
 		([name, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
@@ -175,10 +230,12 @@ function multipartTextBody(boundary, fields) {
 	return `${parts.join("")}--${boundary}--\r\n`;
 }
 
-export async function transcribeWithMistral(env, { apiKey, fileUrl }) {
+/**
+ * @param {{ apiKey: string, fileUrl: string }} args
+ */
+export async function transcribeWithMistral({ apiKey, fileUrl }) {
 	const boundary = `bonobo-plugin-${crypto.randomUUID()}`;
-	const response = await outboundFetchWithRetry(
-		env,
+	const response = await fetchWithRetry(
 		{
 			url: MISTRAL_TRANSCRIPTION_URL,
 			method: "POST",
@@ -186,26 +243,31 @@ export async function transcribeWithMistral(env, { apiKey, fileUrl }) {
 				Authorization: `Bearer ${apiKey}`,
 				"Content-Type": `multipart/form-data; boundary=${boundary}`,
 			},
-			bodyText: multipartTextBody(boundary, [
+			body: multipartTextBody(boundary, [
 				["model", MISTRAL_TRANSCRIPTION_MODEL],
 				["file_url", fileUrl],
 				["diarize", "true"],
 				["timestamp_granularities", "segment"],
 			]),
-			responseType: "text",
 		},
 		(status) => status === 429 || status >= 500,
 	);
-	if (!response.ok) {
-		if (response.status === 429 || response.status >= 500) {
+	if (!response || !response.ok) {
+		if (response && (response.status === 429 || response.status >= 500)) {
 			throw new Error(`Mistral transcription failed (HTTP ${response.status})`);
 		}
-		throw new Error(`Mistral rejected the media (HTTP ${response.status})`);
+		throw new Error(`Mistral rejected the media (HTTP ${response?.status ?? "unknown"})`);
 	}
 
-	return parseJson(response.bodyText ?? "", "Mistral transcription");
+	return parseJson(await response.text(), "Mistral transcription");
 }
 
+/**
+ * @typedef {{ speaker: string | null, startMs: number, endMs: number, text: string }} TranscriptSegment
+ * @typedef {{ language: string | null, durationMs: number | null, text: string, segments: TranscriptSegment[] }} NormalizedTranscription
+ */
+
+/** @param {unknown} speakerId */
 function speakerLabel(speakerId) {
 	if (typeof speakerId !== "string" || speakerId.length === 0) {
 		return null;
@@ -214,6 +276,10 @@ function speakerLabel(speakerId) {
 	return numbered ? `Speaker ${numbered[1]}` : speakerId;
 }
 
+/**
+ * @param {any} payload
+ * @returns {NormalizedTranscription}
+ */
 export function normalizeMistralTranscription(payload) {
 	const record = payload && typeof payload === "object" ? payload : {};
 	const text = typeof record.text === "string" ? record.text.trim() : "";
@@ -249,6 +315,7 @@ export function normalizeMistralTranscription(payload) {
 	};
 }
 
+/** @param {number} ms */
 export function formatTimestamp(ms) {
 	const totalSeconds = Math.max(0, Math.round(ms / 1000));
 	const hours = Math.floor(totalSeconds / 3600);
@@ -257,7 +324,9 @@ export function formatTimestamp(ms) {
 	return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
+/** @param {TranscriptSegment[]} segments */
 function mergeSegmentsIntoTurns(segments) {
+	/** @type {Array<{ speaker: string | null, startMs: number, endMs: number, texts: string[] }>} */
 	const turns = [];
 	for (const segment of segments) {
 		const lastTurn = turns[turns.length - 1];
@@ -271,6 +340,7 @@ function mergeSegmentsIntoTurns(segments) {
 	return turns;
 }
 
+/** @param {{ sourceName: string, model: string, normalized: NormalizedTranscription }} args */
 export function transcriptMarkdown({ sourceName, model, normalized }) {
 	const metaParts = [`Model: ${model}`];
 	if (normalized.durationMs !== null) {
@@ -294,6 +364,7 @@ export function transcriptMarkdown({ sourceName, model, normalized }) {
 	return `${truncateToBytes(markdown, budget)}${TRANSCRIPT_TRUNCATION_NOTICE}`;
 }
 
+/** @param {NormalizedTranscription} normalized */
 function normalizedTranscriptText(normalized) {
 	if (normalized.segments.length === 0) {
 		return normalized.text;
@@ -301,9 +372,9 @@ function normalizedTranscriptText(normalized) {
 	return normalized.segments.map((segment) => `${segment.speaker ?? "Speaker ?"}: ${segment.text}`).join("\n");
 }
 
-export async function summarizeTranscript(env, { apiKey, normalized, sourceName }) {
-	const response = await outboundFetchWithRetry(
-		env,
+/** @param {{ apiKey: string, normalized: NormalizedTranscription, sourceName: string }} args */
+export async function summarizeTranscript({ apiKey, normalized, sourceName }) {
+	const response = await fetchWithRetry(
 		{
 			url: OPENAI_CHAT_COMPLETIONS_URL,
 			method: "POST",
@@ -311,7 +382,7 @@ export async function summarizeTranscript(env, { apiKey, normalized, sourceName 
 				Authorization: `Bearer ${apiKey}`,
 				"Content-Type": "application/json",
 			},
-			bodyText: JSON.stringify({
+			body: JSON.stringify({
 				model: OPENAI_CHAT_MODEL,
 				messages: [
 					{ role: "system", content: SUMMARY_SYSTEM_PROMPT },
@@ -322,15 +393,14 @@ export async function summarizeTranscript(env, { apiKey, normalized, sourceName 
 				],
 				max_completion_tokens: 1200,
 			}),
-			responseType: "text",
 		},
 		(status) => status === 429 || status >= 500,
 	);
-	if (!response.ok) {
-		throw new Error(`OpenAI summary failed (HTTP ${response.status})`);
+	if (!response || !response.ok) {
+		throw new Error(`OpenAI summary failed (HTTP ${response?.status ?? "unknown"})`);
 	}
 
-	const payload = parseJson(response.bodyText ?? "", "OpenAI summary");
+	const payload = parseJson(await response.text(), "OpenAI summary");
 	const choices = payload && typeof payload === "object" && Array.isArray(payload.choices) ? payload.choices : [];
 	const message = choices[0] && typeof choices[0] === "object" ? choices[0].message : null;
 	const content = message && typeof message === "object" ? message.content : null;
@@ -340,11 +410,12 @@ export async function summarizeTranscript(env, { apiKey, normalized, sourceName 
 	return unwrapMarkdown(content);
 }
 
+/** @type {import("bonobo-plugin-sdk").BonoboPluginHandler} */
 export default {
 	async fetch(request, env) {
 		const event = await readEvent(request);
-		const source = getSource(event);
-		if (!source) {
+		const source = event ? getSource(event) : null;
+		if (!event || !source) {
 			return json({ error: "Upload source is missing" }, 400);
 		}
 
@@ -355,22 +426,24 @@ export default {
 
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");
-		const modalUrl = kind === "video" ? await requireSecret(env, "MODAL_MEDIA_AUDIO_URL") : null;
-		const modalToken = kind === "video" ? await requireSecret(env, "MODAL_TOKEN") : null;
 
-		const sourceUrl = await sourceTemporaryUrl(env);
-		const fileUrl =
-			kind === "video"
-				? (await extractAudioUrl(env, { modalUrl, modalToken, sourceUrl, contentType: source.contentType })).audioUrl
-				: sourceUrl;
-		const transcription = await transcribeWithMistral(env, { apiKey: mistralApiKey, fileUrl });
+		const sourceUrl = await sourceTemporaryUrl(env, event.pluginRunId);
+		let fileUrl = sourceUrl;
+		if (kind === "video") {
+			const modalUrl = await requireSecret(env, "MODAL_MEDIA_AUDIO_URL");
+			const modalToken = await requireSecret(env, "MODAL_TOKEN");
+			const extracted = await extractAudioUrl({ modalUrl, modalToken, sourceUrl, contentType: source.contentType });
+			fileUrl = extracted.audioUrl;
+		}
+		const transcription = await transcribeWithMistral({ apiKey: mistralApiKey, fileUrl });
 		const normalized = normalizeMistralTranscription(transcription);
 		const model =
 			transcription && typeof transcription.model === "string" ? transcription.model : MISTRAL_TRANSCRIPTION_MODEL;
 
 		const transcriptPath = `${source.name}.transcript.md`;
 		const summaryPath = `${source.name}.summary.md`;
-		await env.BONOBO.files.writeMarkdown({
+		await hostFetch(env, "/api/plugins/v1/write-markdown", {
+			pluginRunId: event.pluginRunId,
 			path: transcriptPath,
 			markdown: transcriptMarkdown({ sourceName: source.name, model, normalized }),
 			overwrite: "replace",
@@ -379,8 +452,9 @@ export default {
 		const noSpeech = normalized.text.length === 0 && normalized.segments.length === 0;
 		const summary = noSpeech
 			? NO_SPEECH_BODY
-			: await summarizeTranscript(env, { apiKey: openaiApiKey, normalized, sourceName: source.name });
-		await env.BONOBO.files.writeMarkdown({
+			: await summarizeTranscript({ apiKey: openaiApiKey, normalized, sourceName: source.name });
+		await hostFetch(env, "/api/plugins/v1/write-markdown", {
+			pluginRunId: event.pluginRunId,
 			path: summaryPath,
 			markdown: `# Summary — ${source.name}\n\n${summary}`,
 			overwrite: "replace",

@@ -10,6 +10,9 @@ import m4aDiarized from "./test/fixtures/mistral-m4a-diarized.json";
 import wavDiarized from "./test/fixtures/mistral-wav-diarized.json";
 import wavPlain from "./test/fixtures/mistral-wav-plain.json";
 
+const HOST_API_ORIGIN = "https://host.test";
+const SOURCE_TEMPORARY_URL_API = `${HOST_API_ORIGIN}/api/plugins/v1/source-temporary-url`;
+const WRITE_MARKDOWN_API = `${HOST_API_ORIGIN}/api/plugins/v1/write-markdown`;
 const SOURCE_URL = "https://r2.example.com/uploads/source-object?signature=source-sig";
 const MODAL_URL = "https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run/extract";
 const MODAL_AUDIO_URL = "https://modal-bucket.example.com/audio.wav?signature=audio-sig";
@@ -36,37 +39,22 @@ function uploadRequest(source = {}) {
 }
 
 function modalResponse() {
-	return {
-		status: 200,
-		ok: true,
-		headers: { "Content-Type": "application/json" },
-		bodyText: JSON.stringify({ audioUrl: MODAL_AUDIO_URL, expiresAt: 1770000000000, bytes: 4096, durationSeconds: 38 }),
-	};
+	return Response.json({ audioUrl: MODAL_AUDIO_URL, expiresAt: 1770000000000, bytes: 4096, durationSeconds: 38 });
 }
 
 function mistralResponse(payload) {
-	return {
-		status: 200,
-		ok: true,
-		headers: { "Content-Type": "application/json" },
-		bodyText: JSON.stringify(payload),
-	};
+	return Response.json(payload);
 }
 
 function openaiResponse(text) {
-	return {
-		status: 200,
-		ok: true,
-		headers: { "Content-Type": "application/json" },
-		bodyText: JSON.stringify({ choices: [{ message: { content: text } }] }),
-	};
+	return Response.json({ choices: [{ message: { content: text } }] });
 }
 
 function errorResponse(status) {
-	return { status, ok: false, headers: {}, bodyText: "" };
+	return new Response("", { status });
 }
 
-function stubEnv({ secrets = {}, respond } = {}) {
+function stubEnv({ secrets = {} } = {}) {
 	const resolvedSecrets = {
 		MISTRAL_API_KEY: "mistral-key",
 		OPENAI_API_KEY: "openai-key",
@@ -74,46 +62,59 @@ function stubEnv({ secrets = {}, respond } = {}) {
 		MODAL_TOKEN: "modal-token",
 		...secrets,
 	};
-	const writes = [];
-	const fetches = [];
-	const env = {
+	return {
 		BONOBO: {
 			secrets: {
 				get: async (name) => resolvedSecrets[name] ?? null,
 			},
-			files: {
-				source: {
-					temporaryUrl: async () => ({ url: SOURCE_URL, expiresAt: Date.now() + 900_000 }),
-				},
-				writeMarkdown: async (input) => {
-					writes.push(input);
-					return null;
-				},
-			},
-			outbound: {
-				fetch: async (args) => {
-					fetches.push(args);
-					return respond(args);
-				},
-			},
+			host: { apiOrigin: HOST_API_ORIGIN, token: "run-token" },
 		},
 	};
-	return { env, writes, fetches };
 }
 
-function respondByService({ modal = modalResponse(), mistral = mistralResponse(wavDiarized), openai = openaiResponse("A concise summary.") } = {}) {
-	return (args) => {
-		if (args.url.startsWith(MODAL_URL)) {
-			return modal;
+function capturedHostCall(init) {
+	return { headers: init.headers, body: JSON.parse(String(init.body)) };
+}
+
+function capturedServiceCall(url, init) {
+	return { url, headers: init.headers, body: String(init.body) };
+}
+
+// Mocks global fetch: host API origin calls (source URL, write markdown) are tracked separately
+// from the third-party service calls (Modal, Mistral, OpenAI) in `fetches`. Service responders are
+// thunks so retries produce a fresh single-use Response each attempt.
+function stubFetch({ modal, mistral, openai } = {}) {
+	const temporaryUrlCalls = [];
+	const writeMarkdownCalls = [];
+	const fetches = [];
+	const respondModal = modal ?? (() => modalResponse());
+	const respondMistral = mistral ?? (() => mistralResponse(wavDiarized));
+	const respondOpenai = openai ?? (() => openaiResponse("A concise summary."));
+	const fetchMock = vi.fn(async (url, init) => {
+		if (url === SOURCE_TEMPORARY_URL_API) {
+			temporaryUrlCalls.push(capturedHostCall(init));
+			return Response.json({ url: SOURCE_URL, expiresAt: Date.now() + 900_000 });
 		}
-		if (args.url.startsWith(MISTRAL_URL_PREFIX)) {
-			return mistral;
+		if (url === WRITE_MARKDOWN_API) {
+			writeMarkdownCalls.push(capturedHostCall(init));
+			return Response.json({ ok: true });
 		}
-		if (args.url.startsWith(OPENAI_URL_PREFIX)) {
-			return openai;
+		if (url.startsWith(MODAL_URL)) {
+			fetches.push(capturedServiceCall(url, init));
+			return respondModal();
 		}
-		throw new Error(`Unexpected outbound URL: ${args.url}`);
-	};
+		if (url.startsWith(MISTRAL_URL_PREFIX)) {
+			fetches.push(capturedServiceCall(url, init));
+			return respondMistral();
+		}
+		if (url.startsWith(OPENAI_URL_PREFIX)) {
+			fetches.push(capturedServiceCall(url, init));
+			return respondOpenai();
+		}
+		throw new Error(`Unexpected fetch URL: ${url}`);
+	});
+	vi.stubGlobal("fetch", fetchMock);
+	return { fetchMock, temporaryUrlCalls, writeMarkdownCalls, fetches };
 }
 
 async function fetchExpectingError(env, request) {
@@ -126,6 +127,7 @@ async function fetchExpectingError(env, request) {
 
 afterEach(() => {
 	vi.useRealTimers();
+	vi.unstubAllGlobals();
 });
 
 describe("mediaKind", () => {
@@ -308,16 +310,18 @@ describe("transcriptMarkdown", () => {
 
 describe("worker fetch", () => {
 	it("skips unsupported content types", async () => {
-		const { env, writes, fetches } = stubEnv({ respond: respondByService() });
+		const { fetches, writeMarkdownCalls } = stubFetch();
+		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest({ name: "photo.png", contentType: "image/png" }), env);
 		expect(response.status).toBe(204);
 		expect(response.headers.get("X-Bonobo-Skipped")).toBe("unsupported_content_type");
-		expect(writes).toHaveLength(0);
+		expect(writeMarkdownCalls).toHaveLength(0);
 		expect(fetches).toHaveLength(0);
 	});
 
 	it("extracts audio through Modal before transcribing video uploads", async () => {
-		const { env, writes, fetches } = stubEnv({ respond: respondByService() });
+		const { fetches, writeMarkdownCalls, temporaryUrlCalls } = stubFetch();
+		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest(), env);
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
@@ -325,104 +329,105 @@ describe("worker fetch", () => {
 			files: ["meeting.mp4.transcript.md", "meeting.mp4.summary.md"],
 		});
 
+		expect(temporaryUrlCalls).toHaveLength(1);
+		expect(temporaryUrlCalls[0].headers.Authorization).toBe("Bearer run-token");
+		expect(temporaryUrlCalls[0].body).toEqual({ pluginRunId: "run-1", expiresInSeconds: 900 });
+
 		expect(fetches).toHaveLength(3);
 		expect(fetches[0].url).toBe(MODAL_URL);
 		expect(fetches[0].headers.Authorization).toBe("Bearer modal-token");
-		expect(JSON.parse(fetches[0].bodyText)).toEqual({
+		expect(JSON.parse(fetches[0].body)).toEqual({
 			sourceUrl: SOURCE_URL,
 			contentType: "video/mp4",
 			maxBytes: 200 * 1024 * 1024,
 		});
 		expect(fetches[1].url).toBe("https://api.mistral.ai/v1/audio/transcriptions");
 		expect(fetches[1].headers.Authorization).toBe("Bearer mistral-key");
-		expect(fetches[1].bodyText).toContain('name="file_url"\r\n\r\n' + MODAL_AUDIO_URL);
-		expect(fetches[1].bodyText).toContain('name="model"\r\n\r\nvoxtral-mini-latest');
-		expect(fetches[1].bodyText).toContain('name="diarize"\r\n\r\ntrue');
-		expect(fetches[1].bodyText).toContain('name="timestamp_granularities"\r\n\r\nsegment');
-		expect(fetches[1].bodyText).not.toContain(SOURCE_URL);
+		expect(fetches[1].body).toContain('name="file_url"\r\n\r\n' + MODAL_AUDIO_URL);
+		expect(fetches[1].body).toContain('name="model"\r\n\r\nvoxtral-mini-latest');
+		expect(fetches[1].body).toContain('name="diarize"\r\n\r\ntrue');
+		expect(fetches[1].body).toContain('name="timestamp_granularities"\r\n\r\nsegment');
+		expect(fetches[1].body).not.toContain(SOURCE_URL);
 		expect(fetches[2].url).toBe("https://api.openai.com/v1/chat/completions");
 
-		expect(writes).toHaveLength(2);
-		expect(writes[0].path).toBe("meeting.mp4.transcript.md");
-		expect(writes[0].markdown).toContain("## Speaker 1 — [00:00:00 – 00:00:07]");
-		expect(writes[1].path).toBe("meeting.mp4.summary.md");
-		expect(writes[1].markdown).toBe("# Summary — meeting.mp4\n\nA concise summary.");
+		expect(writeMarkdownCalls).toHaveLength(2);
+		expect(writeMarkdownCalls[0].headers.Authorization).toBe("Bearer run-token");
+		expect(writeMarkdownCalls[0].body.path).toBe("meeting.mp4.transcript.md");
+		expect(writeMarkdownCalls[0].body.markdown).toContain("## Speaker 1 — [00:00:00 – 00:00:07]");
+		expect(writeMarkdownCalls[1].body.path).toBe("meeting.mp4.summary.md");
+		expect(writeMarkdownCalls[1].body.markdown).toBe("# Summary — meeting.mp4\n\nA concise summary.");
 	});
 
 	it("sends audio uploads straight to Mistral without Modal", async () => {
-		const { env, writes, fetches } = stubEnv({ respond: respondByService() });
+		const { fetches, writeMarkdownCalls } = stubFetch();
+		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest({ name: "call.wav", contentType: "audio/wav" }), env);
 		expect(response.status).toBe(200);
 		expect(fetches).toHaveLength(2);
 		expect(fetches[0].url).toBe("https://api.mistral.ai/v1/audio/transcriptions");
-		expect(fetches[0].bodyText).toContain('name="file_url"\r\n\r\n' + SOURCE_URL);
+		expect(fetches[0].body).toContain('name="file_url"\r\n\r\n' + SOURCE_URL);
 		expect(fetches[1].url).toBe("https://api.openai.com/v1/chat/completions");
-		expect(writes.map((write) => write.path)).toEqual(["call.wav.transcript.md", "call.wav.summary.md"]);
+		expect(writeMarkdownCalls.map((call) => call.body.path)).toEqual(["call.wav.transcript.md", "call.wav.summary.md"]);
 	});
 
 	it("fails before any write when MISTRAL_API_KEY is missing", async () => {
-		const { env, writes, fetches } = stubEnv({
-			secrets: { MISTRAL_API_KEY: null },
-			respond: respondByService(),
-		});
+		const { fetches, writeMarkdownCalls } = stubFetch();
+		const env = stubEnv({ secrets: { MISTRAL_API_KEY: null } });
 		await expect(worker.fetch(uploadRequest(), env)).rejects.toThrow("MISTRAL_API_KEY secret is not configured");
-		expect(writes).toHaveLength(0);
+		expect(writeMarkdownCalls).toHaveLength(0);
 		expect(fetches).toHaveLength(0);
 	});
 
 	it("fails deterministically without retry when Modal returns 413", async () => {
 		vi.useFakeTimers();
-		const { env, writes, fetches } = stubEnv({
-			respond: respondByService({ modal: errorResponse(413) }),
-		});
+		const { fetches, writeMarkdownCalls } = stubFetch({ modal: () => errorResponse(413) });
+		const env = stubEnv();
 		const error = await fetchExpectingError(env, uploadRequest());
 		expect(error.message).toBe("Modal audio extractor rejected the request (HTTP 413)");
 		expect(fetches).toHaveLength(1);
-		expect(writes).toHaveLength(0);
+		expect(writeMarkdownCalls).toHaveLength(0);
 	});
 
 	it("retries Mistral once on HTTP 500 and then fails", async () => {
 		vi.useFakeTimers();
-		const { env, writes, fetches } = stubEnv({
-			respond: respondByService({ mistral: errorResponse(500) }),
-		});
+		const { fetches, writeMarkdownCalls } = stubFetch({ mistral: () => errorResponse(500) });
+		const env = stubEnv();
 		const error = await fetchExpectingError(env, uploadRequest({ name: "call.wav", contentType: "audio/wav" }));
 		expect(error.message).toBe("Mistral transcription failed (HTTP 500)");
 		expect(fetches).toHaveLength(2);
 		expect(fetches.every((fetchArgs) => fetchArgs.url.startsWith(MISTRAL_URL_PREFIX))).toBe(true);
-		expect(writes).toHaveLength(0);
+		expect(writeMarkdownCalls).toHaveLength(0);
 	});
 
 	it("keeps the transcript when the summary fails after it is written", async () => {
 		vi.useFakeTimers();
-		const { env, writes, fetches } = stubEnv({
-			respond: respondByService({ openai: errorResponse(500) }),
-		});
+		const { fetches, writeMarkdownCalls } = stubFetch({ openai: () => errorResponse(500) });
+		const env = stubEnv();
 		const error = await fetchExpectingError(env, uploadRequest({ name: "call.wav", contentType: "audio/wav" }));
 		expect(error.message).toBe("OpenAI summary failed (HTTP 500)");
-		expect(writes).toHaveLength(1);
-		expect(writes[0].path).toBe("call.wav.transcript.md");
+		expect(writeMarkdownCalls).toHaveLength(1);
+		expect(writeMarkdownCalls[0].body.path).toBe("call.wav.transcript.md");
 		expect(fetches.filter((fetchArgs) => fetchArgs.url.startsWith(OPENAI_URL_PREFIX))).toHaveLength(2);
 	});
 
 	it("writes no-speech transcript and summary without calling OpenAI", async () => {
-		const { env, writes, fetches } = stubEnv({
-			respond: respondByService({
-				mistral: mistralResponse({
+		const { fetches, writeMarkdownCalls } = stubFetch({
+			mistral: () =>
+				mistralResponse({
 					model: "voxtral-mini-latest",
 					text: "",
 					language: null,
 					segments: [],
 					usage: { prompt_audio_seconds: 2 },
 				}),
-			}),
 		});
+		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest({ name: "silence.wav", contentType: "audio/wav" }), env);
 		expect(response.status).toBe(200);
 		expect(fetches).toHaveLength(1);
 		expect(fetches[0].url).toBe("https://api.mistral.ai/v1/audio/transcriptions");
-		expect(writes).toHaveLength(2);
-		expect(writes[0].markdown).toContain("_No speech detected._");
-		expect(writes[1].markdown).toBe("# Summary — silence.wav\n\n_No speech detected._");
+		expect(writeMarkdownCalls).toHaveLength(2);
+		expect(writeMarkdownCalls[0].body.markdown).toContain("_No speech detected._");
+		expect(writeMarkdownCalls[1].body.markdown).toBe("# Summary — silence.wav\n\n_No speech detected._");
 	});
 });

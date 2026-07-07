@@ -1,13 +1,15 @@
 {
 	"compilerOptions": {
 		"allowJs": true,
-		"checkJs": false,
-		"lib": ["ES2024", "WebWorker"],
+		"checkJs": true,
+		"lib": ["ES2024"],
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"noEmit": true,
+		"skipLibCheck": true,
 		"strict": true,
-		"target": "ES2024"
+		"target": "ES2024",
+		"types": ["@cloudflare/workers-types"]
 	},
-	"include": ["dist/**/*.js", "worker.test.js"]
+	"include": ["dist/**/*.js"]
 }

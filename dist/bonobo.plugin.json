@@ -2,7 +2,7 @@
 	"schemaVersion": 1,
 	"name": "video",
 	"displayName": "Video",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Generates diarized transcripts and summaries for uploaded videos and audio recordings.",
 	"compatibility": {
 		"bonoboPluginRuntime": "1"
@@ -32,7 +32,7 @@
 		}
 	],
 	"pages": [],
-	"capabilities": ["uploads.source.read", "files.source.temporaryUrl", "files.markdown.write", "plugin.secrets.read", "outbound.fetch"],
+	"capabilities": ["plugin.secrets.read", "outbound.fetch"],
 	"outboundOrigins": [
 		"https://api.mistral.ai",
 		"https://api.openai.com",
@@ -41,8 +41,8 @@
 	"files": [
 		{
 			"path": "dist/backend/worker.js",
-			"sha256": "sha256:d3f18f7ac16ac27e68339786faf572594b55cee24a454ecbf5c0886af798d154",
-			"bytes": 12597,
+			"sha256": "sha256:4a03256985063af14fcf517c5a6e8baf7f441ea25dad193b5bcf815dee33ba25",
+			"bytes": 15335,
 			"contentType": "application/javascript"
 		}
 	]

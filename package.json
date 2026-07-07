@@ -1,7 +1,7 @@
 {
 	"name": "@bonobo/plugin-video",
 	"private": true,
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"type": "module",
 	"scripts": {
 		"build:manifest": "node scripts/build-manifest.mjs",
@@ -13,7 +13,9 @@
 		"deploy:modal": "pwsh -NoProfile -File scripts/modal-cli.ps1 deploy modal/media_audio_extractor.py"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260410.1",
 		"@eslint/js": "^9.39.1",
+		"bonobo-plugin-sdk": "github:raythurnvoid/bonobo-plugin-sdk",
 		"eslint": "^9.39.1",
 		"globals": "^16.5.0",
 		"typescript": "~5.9.3",
