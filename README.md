@@ -5,9 +5,9 @@ First-party Bonobo workspace plugin that generates a diarized transcript (`<name
 ## How it works
 
 1. The host fires `files.upload.completed` for a supported video (`video/mp4`, `video/webm`, `video/mpeg`, `video/quicktime`) or audio (`audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/mp4`, `audio/x-m4a`, `audio/flac`, `audio/ogg`) upload.
-2. The worker requests a presigned temporary URL for the uploaded source.
+2. The worker requests a presigned download URL for the uploaded source (`POST /api/v1/files/download-url` with the event's `source.fileNodeId`).
 3. Video uploads are never sent to Mistral directly: the worker first posts the source URL to a Modal audio extractor, which returns a presigned URL for the extracted audio track. Audio uploads skip Modal and go straight to Mistral.
-4. The audio URL is transcribed with Mistral Voxtral (`voxtral-mini-latest`, `diarize=true`, segment timestamps) and rendered as a speaker-turn Markdown transcript. The transcript is written first, so it survives even if summarization fails afterwards.
+4. The audio URL is transcribed with Mistral Voxtral (`voxtral-mini-latest`, `diarize=true`, segment timestamps) and rendered as a speaker-turn Markdown transcript. The transcript is written first (`POST /api/v1/files/write` with the absolute sibling path built from `source.path`), so it survives even if summarization fails afterwards.
 5. The transcript is summarized with OpenAI `gpt-4.1-mini` and written as the summary file.
 
 All AI calls are plugin-owned outbound requests; the plugin uses no host `ai.*` capabilities.

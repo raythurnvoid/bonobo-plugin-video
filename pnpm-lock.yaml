@@ -16,7 +16,7 @@ importers:
         version: 9.39.4
       bonobo-plugin-sdk:
         specifier: github:raythurnvoid/bonobo-plugin-sdk
-        version: https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/c25177b793f56b1ab868ea396fdd0013a7a1096d
+        version: https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/d2d87f1e62df837e505643d433b99b768b0a47aa
       eslint:
         specifier: ^9.39.1
         version: 9.39.4
@@ -458,9 +458,9 @@ packages:
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
-  bonobo-plugin-sdk@https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/c25177b793f56b1ab868ea396fdd0013a7a1096d:
-    resolution: {tarball: https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/c25177b793f56b1ab868ea396fdd0013a7a1096d}
-    version: 0.1.0
+  bonobo-plugin-sdk@https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/d2d87f1e62df837e505643d433b99b768b0a47aa:
+    resolution: {tarball: https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/d2d87f1e62df837e505643d433b99b768b0a47aa}
+    version: 0.2.0
 
   brace-expansion@1.1.15:
     resolution: {integrity: sha512-EwOCDEex4quD37XhqM3omwtMoJjr//isUZz1JopUNWms+4Z2ViyM/k1YIRePpoVNnQhENnxtFjLaxNHrT7xIUg==}
@@ -1216,7 +1216,7 @@ snapshots:
 
   balanced-match@1.0.2: {}
 
-  bonobo-plugin-sdk@https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/c25177b793f56b1ab868ea396fdd0013a7a1096d:
+  bonobo-plugin-sdk@https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/d2d87f1e62df837e505643d433b99b768b0a47aa:
     dependencies:
       '@cloudflare/workers-types': 4.20260702.1
 

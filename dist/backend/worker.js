@@ -1,4 +1,4 @@
-const TEMPORARY_URL_EXPIRES_SECONDS = 15 * 60;
+const DOWNLOAD_URL_EXPIRES_SECONDS = 15 * 60;
 const MODAL_MAX_SOURCE_BYTES = 200 * 1024 * 1024;
 const MAX_MARKDOWN_BYTES = 900_000;
 const MISTRAL_TRANSCRIPTION_MODEL = "voxtral-mini-latest";
@@ -63,7 +63,13 @@ async function readEvent(request) {
 /** @param {import("bonobo-plugin-sdk").BonoboUploadCompletedEvent} event */
 function getSource(event) {
 	const source = event && typeof event === "object" ? event.source : null;
-	if (!source || typeof source !== "object" || typeof source.name !== "string") {
+	if (
+		!source ||
+		typeof source !== "object" ||
+		typeof source.fileNodeId !== "string" ||
+		typeof source.name !== "string" ||
+		typeof source.path !== "string"
+	) {
 		return null;
 	}
 
@@ -146,15 +152,15 @@ async function hostFetch(env, path, body) {
 
 /**
  * @param {import("bonobo-plugin-sdk").BonoboEnv} env
- * @param {string} pluginRunId
+ * @param {string} fileNodeId
  */
-async function sourceTemporaryUrl(env, pluginRunId) {
-	const result = await hostFetch(env, "/api/plugins/v1/source-temporary-url", {
-		pluginRunId,
-		expiresInSeconds: TEMPORARY_URL_EXPIRES_SECONDS,
+async function sourceDownloadUrl(env, fileNodeId) {
+	const result = await hostFetch(env, "/api/v1/files/download-url", {
+		fileNodeId,
+		expiresInSeconds: DOWNLOAD_URL_EXPIRES_SECONDS,
 	});
 	if (!result || typeof result.url !== "string") {
-		throw new Error("Source temporary URL is unavailable");
+		throw new Error("Source download URL is unavailable");
 	}
 	return result.url;
 }
@@ -427,7 +433,7 @@ export default {
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");
 
-		const sourceUrl = await sourceTemporaryUrl(env, event.pluginRunId);
+		const sourceUrl = await sourceDownloadUrl(env, source.fileNodeId);
 		let fileUrl = sourceUrl;
 		if (kind === "video") {
 			const modalUrl = await requireSecret(env, "MODAL_MEDIA_AUDIO_URL");
@@ -440,12 +446,12 @@ export default {
 		const model =
 			transcription && typeof transcription.model === "string" ? transcription.model : MISTRAL_TRANSCRIPTION_MODEL;
 
-		const transcriptPath = `${source.name}.transcript.md`;
-		const summaryPath = `${source.name}.summary.md`;
-		await hostFetch(env, "/api/plugins/v1/write-markdown", {
-			pluginRunId: event.pluginRunId,
+		// Absolute siblings of the upload: /folder/meeting.mp4 -> /folder/meeting.mp4.transcript.md.
+		const transcriptPath = `${source.path}.transcript.md`;
+		const summaryPath = `${source.path}.summary.md`;
+		await hostFetch(env, "/api/v1/files/write", {
 			path: transcriptPath,
-			markdown: transcriptMarkdown({ sourceName: source.name, model, normalized }),
+			content: transcriptMarkdown({ sourceName: source.name, model, normalized }),
 			overwrite: "replace",
 		});
 
@@ -453,10 +459,9 @@ export default {
 		const summary = noSpeech
 			? NO_SPEECH_BODY
 			: await summarizeTranscript({ apiKey: openaiApiKey, normalized, sourceName: source.name });
-		await hostFetch(env, "/api/plugins/v1/write-markdown", {
-			pluginRunId: event.pluginRunId,
+		await hostFetch(env, "/api/v1/files/write", {
 			path: summaryPath,
-			markdown: `# Summary — ${source.name}\n\n${summary}`,
+			content: `# Summary — ${source.name}\n\n${summary}`,
 			overwrite: "replace",
 		});
 
