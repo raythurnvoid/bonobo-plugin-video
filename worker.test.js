@@ -11,7 +11,7 @@ import wavDiarized from "./test/fixtures/mistral-wav-diarized.json";
 import wavPlain from "./test/fixtures/mistral-wav-plain.json";
 
 const HOST_API_ORIGIN = "https://host.test";
-const DOWNLOAD_URL_API = `${HOST_API_ORIGIN}/api/v1/files/download-url`;
+const DOWNLOAD_URL_API = `${HOST_API_ORIGIN}/api/v1/files/download-urls`;
 const FILES_WRITE_API = `${HOST_API_ORIGIN}/api/v1/files/write`;
 const SOURCE_URL = "https://r2.example.com/uploads/source-object?signature=source-sig";
 const MODAL_URL = "https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run/extract";
@@ -94,7 +94,11 @@ function stubFetch({ modal, mistral, openai } = {}) {
 	const fetchMock = vi.fn(async (url, init) => {
 		if (url === DOWNLOAD_URL_API) {
 			downloadUrlCalls.push(capturedHostCall(init));
-			return Response.json({ fileNodeId: "node-1", url: SOURCE_URL, expiresAt: Date.now() + 900_000 });
+			return Response.json({
+				items: [{ fileNodeId: "node-1", url: SOURCE_URL, expiresAt: Date.now() + 900_000 }],
+				errors: [],
+				truncated: false,
+			});
 		}
 		if (url === FILES_WRITE_API) {
 			const call = capturedHostCall(init);
@@ -333,7 +337,7 @@ describe("worker fetch", () => {
 
 		expect(downloadUrlCalls).toHaveLength(1);
 		expect(downloadUrlCalls[0].headers.Authorization).toBe("Bearer run-token");
-		expect(downloadUrlCalls[0].body).toEqual({ fileNodeId: "node-1", expiresInSeconds: 900 });
+		expect(downloadUrlCalls[0].body).toEqual({ fileNodeIds: ["node-1"], expiresInSeconds: 900 });
 
 		expect(fetches).toHaveLength(3);
 		expect(fetches[0].url).toBe(MODAL_URL);

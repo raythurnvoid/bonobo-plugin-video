@@ -5,7 +5,7 @@ First-party Bonobo workspace plugin that generates a diarized transcript (`<name
 ## How it works
 
 1. The host fires `files.upload.completed` for a supported video (`video/mp4`, `video/webm`, `video/mpeg`, `video/quicktime`) or audio (`audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/mp4`, `audio/x-m4a`, `audio/flac`, `audio/ogg`) upload.
-2. The worker requests a presigned download URL for the uploaded source (`POST /api/v1/files/download-url` with the event's `source.fileNodeId`).
+2. The worker requests a presigned download URL for the uploaded source (`POST /api/v1/files/download-urls` with `[source.fileNodeId]`).
 3. Video uploads are never sent to Mistral directly: the worker first posts the source URL to a Modal audio extractor, which returns a presigned URL for the extracted audio track. Audio uploads skip Modal and go straight to Mistral.
 4. The audio URL is transcribed with Mistral Voxtral (`voxtral-mini-latest`, `diarize=true`, segment timestamps) and rendered as a speaker-turn Markdown transcript. The transcript is written first (`POST /api/v1/files/write` with the absolute sibling path built from `source.path`), so it survives even if summarization fails afterwards.
 5. The transcript is summarized with OpenAI `gpt-4.1-mini` and written as the summary file.
@@ -16,12 +16,12 @@ All AI calls are plugin-owned outbound requests; the plugin uses no host `ai.*` 
 
 The plugin reads these secrets at run time and fails with `<NAME> secret is not configured` before writing any output when one is missing:
 
-| Secret | Used for |
-| --- | --- |
-| `MISTRAL_API_KEY` | Voxtral transcription (`https://api.mistral.ai`) |
-| `OPENAI_API_KEY` | Transcript summarization (`https://api.openai.com`) |
-| `MODAL_MEDIA_AUDIO_URL` | Modal audio extractor endpoint (video uploads only) |
-| `MODAL_TOKEN` | Bearer token for the Modal audio extractor (video uploads only) |
+| Secret                  | Used for                                                        |
+| ----------------------- | --------------------------------------------------------------- |
+| `MISTRAL_API_KEY`       | Voxtral transcription (`https://api.mistral.ai`)                |
+| `OPENAI_API_KEY`        | Transcript summarization (`https://api.openai.com`)             |
+| `MODAL_MEDIA_AUDIO_URL` | Modal audio extractor endpoint (video uploads only)             |
+| `MODAL_TOKEN`           | Bearer token for the Modal audio extractor (video uploads only) |
 
 Publisher-tier secrets mean the publisher's Mistral/OpenAI/Modal accounts process the media for every installation of this plugin. Workspaces can shadow any of these secrets with installation-tier values to use their own accounts instead.
 

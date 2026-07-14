@@ -155,14 +155,15 @@ async function hostFetch(env, path, body) {
  * @param {string} fileNodeId
  */
 async function sourceDownloadUrl(env, fileNodeId) {
-	const result = await hostFetch(env, "/api/v1/files/download-url", {
-		fileNodeId,
+	const result = await hostFetch(env, "/api/v1/files/download-urls", {
+		fileNodeIds: [fileNodeId],
 		expiresInSeconds: DOWNLOAD_URL_EXPIRES_SECONDS,
 	});
-	if (!result || typeof result.url !== "string") {
+	const item = result?.items?.[0];
+	if (!item || typeof item.url !== "string") {
 		throw new Error("Source download URL is unavailable");
 	}
-	return result.url;
+	return item.url;
 }
 
 /**
