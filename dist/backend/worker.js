@@ -433,13 +433,32 @@ export default {
 
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");
+		let modalSecrets = null;
+		if (kind === "video") {
+			modalSecrets = {
+				modalUrl: await requireSecret(env, "MODAL_MEDIA_AUDIO_URL"),
+				modalToken: await requireSecret(env, "MODAL_TOKEN"),
+			};
+		}
+
+		// Absolute siblings of the upload: /folder/meeting.mp4 -> /folder/meeting.mp4.transcript.md.
+		const transcriptPath = `${source.path}.transcript.md`;
+		const summaryPath = `${source.path}.summary.md`;
+		// Create the output files empty right away — after every secret is known to exist, so a
+		// missing secret still fails before any file appears — and let the user see where the
+		// transcript and summary will land while transcription runs. The writes below fill these
+		// same nodes in place.
+		await hostFetch(env, "/api/v1/files/touch", { paths: [transcriptPath, summaryPath] });
 
 		const sourceUrl = await sourceDownloadUrl(env, source.fileNodeId);
 		let fileUrl = sourceUrl;
-		if (kind === "video") {
-			const modalUrl = await requireSecret(env, "MODAL_MEDIA_AUDIO_URL");
-			const modalToken = await requireSecret(env, "MODAL_TOKEN");
-			const extracted = await extractAudioUrl({ modalUrl, modalToken, sourceUrl, contentType: source.contentType });
+		if (modalSecrets) {
+			const extracted = await extractAudioUrl({
+				modalUrl: modalSecrets.modalUrl,
+				modalToken: modalSecrets.modalToken,
+				sourceUrl,
+				contentType: source.contentType,
+			});
 			fileUrl = extracted.audioUrl;
 		}
 		const transcription = await transcribeWithMistral({ apiKey: mistralApiKey, fileUrl });
@@ -447,9 +466,6 @@ export default {
 		const model =
 			transcription && typeof transcription.model === "string" ? transcription.model : MISTRAL_TRANSCRIPTION_MODEL;
 
-		// Absolute siblings of the upload: /folder/meeting.mp4 -> /folder/meeting.mp4.transcript.md.
-		const transcriptPath = `${source.path}.transcript.md`;
-		const summaryPath = `${source.path}.summary.md`;
 		await hostFetch(env, "/api/v1/files/write", {
 			path: transcriptPath,
 			content: transcriptMarkdown({ sourceName: source.name, model, normalized }),
