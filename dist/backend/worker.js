@@ -431,6 +431,11 @@ export default {
 			return skipped();
 		}
 
+		// Opt into the workspace activity feed first, so users can watch the run — including a
+		// failure while reading secrets. The host links every file this run touches or writes to
+		// the activity and closes it with the run's outcome.
+		await hostFetch(env, "/api/v1/activities/start", { title: `Transcribing ${source.name}` });
+
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");
 		let modalSecrets = null;

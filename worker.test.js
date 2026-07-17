@@ -11,7 +11,9 @@ import wavDiarized from "./test/fixtures/mistral-wav-diarized.json";
 import wavPlain from "./test/fixtures/mistral-wav-plain.json";
 
 const HOST_API_ORIGIN = "https://host.test";
+const ACTIVITIES_START_API = `${HOST_API_ORIGIN}/api/v1/activities/start`;
 const DOWNLOAD_URL_API = `${HOST_API_ORIGIN}/api/v1/files/download-urls`;
+const FILES_TOUCH_API = `${HOST_API_ORIGIN}/api/v1/files/touch`;
 const FILES_WRITE_API = `${HOST_API_ORIGIN}/api/v1/files/write`;
 const SOURCE_URL = "https://r2.example.com/uploads/source-object?signature=source-sig";
 const MODAL_URL = "https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run/extract";
@@ -85,13 +87,24 @@ function capturedServiceCall(url, init) {
 // from the third-party service calls (Modal, Mistral, OpenAI) in `fetches`. Service responders are
 // thunks so retries produce a fresh single-use Response each attempt.
 function stubFetch({ modal, mistral, openai } = {}) {
+	const activityCalls = [];
 	const downloadUrlCalls = [];
+	const touchCalls = [];
 	const writeCalls = [];
 	const fetches = [];
 	const respondModal = modal ?? (() => modalResponse());
 	const respondMistral = mistral ?? (() => mistralResponse(wavDiarized));
 	const respondOpenai = openai ?? (() => openaiResponse("A concise summary."));
 	const fetchMock = vi.fn(async (url, init) => {
+		if (url === ACTIVITIES_START_API) {
+			activityCalls.push(capturedHostCall(init));
+			return Response.json({ activityId: "activity-1" });
+		}
+		if (url === FILES_TOUCH_API) {
+			const call = capturedHostCall(init);
+			touchCalls.push(call);
+			return Response.json({ files: call.body.paths.map((path) => ({ path, nodeId: "node-2", created: true })) });
+		}
 		if (url === DOWNLOAD_URL_API) {
 			downloadUrlCalls.push(capturedHostCall(init));
 			return Response.json({
@@ -120,7 +133,7 @@ function stubFetch({ modal, mistral, openai } = {}) {
 		throw new Error(`Unexpected fetch URL: ${url}`);
 	});
 	vi.stubGlobal("fetch", fetchMock);
-	return { fetchMock, downloadUrlCalls, writeCalls, fetches };
+	return { fetchMock, activityCalls, downloadUrlCalls, touchCalls, writeCalls, fetches };
 }
 
 async function fetchExpectingError(env, request) {
@@ -316,23 +329,34 @@ describe("transcriptMarkdown", () => {
 
 describe("worker fetch", () => {
 	it("skips unsupported content types", async () => {
-		const { fetches, writeCalls } = stubFetch();
+		const { fetches, activityCalls, writeCalls } = stubFetch();
 		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest({ name: "photo.png", contentType: "image/png" }), env);
 		expect(response.status).toBe(204);
 		expect(response.headers.get("X-Bonobo-Skipped")).toBe("unsupported_content_type");
+		// A skipped upload stays invisible: no activity, no files.
+		expect(activityCalls).toHaveLength(0);
 		expect(writeCalls).toHaveLength(0);
 		expect(fetches).toHaveLength(0);
 	});
 
 	it("extracts audio through Modal before transcribing video uploads", async () => {
-		const { fetches, writeCalls, downloadUrlCalls } = stubFetch();
+		const { fetches, activityCalls, touchCalls, writeCalls, downloadUrlCalls } = stubFetch();
 		const env = stubEnv();
 		const response = await worker.fetch(uploadRequest(), env);
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			ok: true,
 			files: ["/recordings/meeting.mp4.transcript.md", "/recordings/meeting.mp4.summary.md"],
+		});
+
+		expect(activityCalls).toHaveLength(1);
+		expect(activityCalls[0].headers.Authorization).toBe("Bearer run-token");
+		expect(activityCalls[0].body).toEqual({ title: "Transcribing meeting.mp4" });
+
+		expect(touchCalls).toHaveLength(1);
+		expect(touchCalls[0].body).toEqual({
+			paths: ["/recordings/meeting.mp4.transcript.md", "/recordings/meeting.mp4.summary.md"],
 		});
 
 		expect(downloadUrlCalls).toHaveLength(1);
@@ -381,9 +405,13 @@ describe("worker fetch", () => {
 	});
 
 	it("fails before any write when MISTRAL_API_KEY is missing", async () => {
-		const { fetches, writeCalls } = stubFetch();
+		const { fetches, activityCalls, touchCalls, writeCalls } = stubFetch();
 		const env = stubEnv({ secrets: { MISTRAL_API_KEY: null } });
 		await expect(worker.fetch(uploadRequest(), env)).rejects.toThrow("MISTRAL_API_KEY secret is not configured");
+		// The activity starts before the secret reads so the failure shows in the feed,
+		// but no file may appear.
+		expect(activityCalls).toHaveLength(1);
+		expect(touchCalls).toHaveLength(0);
 		expect(writeCalls).toHaveLength(0);
 		expect(fetches).toHaveLength(0);
 	});
