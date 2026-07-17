@@ -352,7 +352,7 @@ describe("worker fetch", () => {
 
 		expect(activityCalls).toHaveLength(1);
 		expect(activityCalls[0].headers.Authorization).toBe("Bearer run-token");
-		expect(activityCalls[0].body).toEqual({ title: "Transcribing meeting.mp4" });
+		expect(activityCalls[0].body).toEqual({ title: "Transcribing meeting.mp4", timeoutMs: 5 * 60 * 1000 });
 
 		expect(touchCalls).toHaveLength(1);
 		expect(touchCalls[0].body).toEqual({

@@ -7,6 +7,9 @@ const OPENAI_CHAT_MODEL = "gpt-4.1-mini";
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const OUTBOUND_RETRY_ATTEMPTS = 2;
 const OUTBOUND_RETRY_DELAY_MS = 5000;
+// Predicted run duration for the activity feed: a cold run (Modal boot + transcription + two
+// summaries) can take ~4 minutes, so claim the host's 5-minute maximum.
+const ACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSCRIPT_TRUNCATION_NOTICE = "\n\n_Transcript truncated to fit the output size limit._";
 const NO_SPEECH_BODY = "_No speech detected._";
 
@@ -434,7 +437,10 @@ export default {
 		// Opt into the workspace activity feed first, so users can watch the run — including a
 		// failure while reading secrets. The host links every file this run touches or writes to
 		// the activity and closes it with the run's outcome.
-		await hostFetch(env, "/api/v1/activities/start", { title: `Transcribing ${source.name}` });
+		await hostFetch(env, "/api/v1/activities/start", {
+			title: `Transcribing ${source.name}`,
+			timeoutMs: ACTIVITY_TIMEOUT_MS,
+		});
 
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");
