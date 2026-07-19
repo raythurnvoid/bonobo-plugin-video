@@ -36,9 +36,11 @@ The Modal component the worker calls for video uploads lives in this repository 
 
 Python is not installed on the development machine; both the Modal CLI and pytest run Docker-wrapped:
 
+Run these commands from the parent `t3-chat` repository root. In a standalone plugin clone, omit `--dir plugins/bonobo-plugin-video` but keep Vite Plus and `--ignore-workspace`.
+
 ```powershell
-pnpm run test:modal
-pnpm run deploy:modal
+vp env exec pnpm --dir plugins/bonobo-plugin-video --ignore-workspace run test:modal
+vp env exec pnpm --dir plugins/bonobo-plugin-video --ignore-workspace run deploy:modal
 ```
 
 The wrapper scripts under `scripts/` mount this repository as `/workspace` and reuse the Modal auth config from `~/.modal-cli`, so a standalone clone of this repository can test and deploy the extractor on its own. The deployed origin is what the `MODAL_MEDIA_AUDIO_URL` publisher secret points at (full `/extract-audio` endpoint URL), with `MODAL_TOKEN` holding the Bearer token.
@@ -46,8 +48,8 @@ The wrapper scripts under `scripts/` mount this repository as `/workspace` and r
 ## Checks
 
 ```powershell
-pnpm run check
-pnpm run test
+vp env exec pnpm --dir plugins/bonobo-plugin-video --ignore-workspace run check
+vp env exec pnpm --dir plugins/bonobo-plugin-video --ignore-workspace run test
 ```
 
 The published plugin entrypoint is `dist/backend/worker.js`, described by `dist/bonobo.plugin.json`. Test fixtures under `test/fixtures/` are real Mistral API responses for synthetic TTS audio and are not part of the published plugin; the same applies to the `modal/` and `scripts/` directories.
@@ -55,6 +57,6 @@ The published plugin entrypoint is `dist/backend/worker.js`, described by `dist/
 ## Release
 
 1. Bump `version` in `bonobo.plugin.json`.
-2. Run `pnpm build:manifest` — recomputes the `files[]` hashes from disk, syncs the `package.json` version, and byte-copies the manifest to `dist/bonobo.plugin.json`.
+2. Run `vp env exec pnpm --dir plugins/bonobo-plugin-video --ignore-workspace run build:manifest` — recomputes the `files[]` hashes from disk, syncs the `package.json` version, and byte-copies the manifest to `dist/bonobo.plugin.json`.
 3. Commit and push.
 4. Publish the new version from the app's plugin publisher page.
