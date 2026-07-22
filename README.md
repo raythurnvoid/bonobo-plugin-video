@@ -12,6 +12,10 @@ First-party Bonobo workspace plugin that generates a diarized transcript (`<name
 
 All AI calls are plugin-owned outbound requests; the plugin uses no host `ai.*` capabilities.
 
+## Configuration
+
+Each installation can edit the manifest-defined YAML. `triggers.files.upload.completed.folders` lists the absolute folders that start automatic video or audio runs. A folder includes its descendants. `/` matches every folder, and an empty list disables automatic runs. Manual runs ignore this filter.
+
 ## Secrets
 
 The plugin reads these secrets at run time and fails with `<NAME> secret is not configured` before writing any output when one is missing:
