@@ -18,7 +18,7 @@
 		"bonobo-plugin-sdk": "github:raythurnvoid/bonobo-plugin-sdk",
 		"eslint": "^9.39.1",
 		"globals": "^16.5.0",
-		"typescript": "~5.9.3",
+		"typescript": "^7.0.2",
 		"vitest": "4.1.10"
 	},
 	"packageManager": "pnpm@10.33.0"
