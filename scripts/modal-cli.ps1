@@ -22,6 +22,9 @@ try {
 
 if (-not $imageExists) {
 	docker build --pull -t $modalCliImage -f $modalCliDockerfile (Split-Path $modalCliDockerfile -Parent)
+	if ($LASTEXITCODE -ne 0) {
+		exit $LASTEXITCODE
+	}
 }
 
 docker run `
@@ -32,3 +35,5 @@ docker run `
 	-e "MODAL_CONFIG_PATH=/modal-config/.modal.toml" `
 	$modalCliImage `
 	@ModalArgs
+
+exit $LASTEXITCODE

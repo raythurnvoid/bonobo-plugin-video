@@ -15,7 +15,7 @@ importers:
         specifier: ^9.39.1
         version: 9.39.4
       bonobo-plugin-sdk:
-        specifier: github:raythurnvoid/bonobo-plugin-sdk
+        specifier: github:raythurnvoid/bonobo-plugin-sdk#d2d87f1e62df837e505643d433b99b768b0a47aa
         version: https://codeload.github.com/raythurnvoid/bonobo-plugin-sdk/tar.gz/d2d87f1e62df837e505643d433b99b768b0a47aa
       eslint:
         specifier: ^9.39.1
