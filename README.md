@@ -24,7 +24,7 @@ The plugin reads these secrets at run time and fails with `<NAME> secret is not 
 | ----------------------- | --------------------------------------------------------------- |
 | `MISTRAL_API_KEY`       | Voxtral transcription (`https://api.mistral.ai`)                |
 | `OPENAI_API_KEY`        | Transcript summarization (`https://api.openai.com`)             |
-| `MODAL_MEDIA_AUDIO_URL` | Modal audio extractor endpoint (video uploads only)             |
+| `MODAL_MEDIA_AUDIO_URL` | Full `/extract-audio` URL of the Modal extractor (video only)   |
 | `MODAL_TOKEN`           | Bearer token for the Modal audio extractor (video uploads only) |
 
 Publisher-tier secrets mean the publisher's Mistral/OpenAI/Modal accounts process the media for every installation of this plugin. Workspaces can shadow any of these secrets with installation-tier values to use their own accounts instead.

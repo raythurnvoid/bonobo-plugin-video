@@ -16,7 +16,7 @@ const DOWNLOAD_URL_API = `${HOST_API_ORIGIN}/api/v1/files/download-urls`;
 const FILES_TOUCH_API = `${HOST_API_ORIGIN}/api/v1/files/touch`;
 const FILES_WRITE_API = `${HOST_API_ORIGIN}/api/v1/files/write`;
 const SOURCE_URL = "https://r2.example.com/uploads/source-object?signature=source-sig";
-const MODAL_URL = "https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run/extract";
+const MODAL_URL = "https://ray-thurne-void--bonobo-senate-press-media-audio-asgi.modal.run/extract-audio";
 const MODAL_AUDIO_URL = "https://modal-bucket.example.com/audio.wav?signature=audio-sig";
 const MISTRAL_URL_PREFIX = "https://api.mistral.ai/";
 const OPENAI_URL_PREFIX = "https://api.openai.com/";
