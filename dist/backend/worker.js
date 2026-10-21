@@ -1,5 +1,7 @@
 const DOWNLOAD_URL_EXPIRES_SECONDS = 15 * 60;
 const MODAL_MAX_SOURCE_BYTES = 200 * 1024 * 1024;
+// Mistral accepts audio files up to 500 MB.
+const MAX_AUDIO_BYTES = 500 * 1024 * 1024;
 const MAX_MARKDOWN_BYTES = 900_000;
 const MISTRAL_TRANSCRIPTION_MODEL = "voxtral-mini-latest";
 const MISTRAL_TRANSCRIPTION_URL = "https://api.mistral.ai/v1/audio/transcriptions";
@@ -7,9 +9,9 @@ const OPENAI_CHAT_MODEL = "gpt-4.1-mini";
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const OUTBOUND_RETRY_ATTEMPTS = 2;
 const OUTBOUND_RETRY_DELAY_MS = 5000;
-// Predicted run duration for the activity feed: a cold run (Modal boot + transcription + two
-// summaries) can take ~4 minutes, so claim the host's 5-minute maximum.
-const ACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+// Predicted run duration for the activity feed. The host stops a plugin request after 3 minutes,
+// so a longer claim would only keep a dead run looking busy.
+const ACTIVITY_TIMEOUT_MS = 3 * 60 * 1000;
 const TRANSCRIPT_TRUNCATION_NOTICE = "\n\n_Transcript truncated to fit the output size limit._";
 const NO_SPEECH_BODY = "_No speech detected._";
 
@@ -71,12 +73,18 @@ function getSource(event) {
 		typeof source !== "object" ||
 		typeof source.fileNodeId !== "string" ||
 		typeof source.name !== "string" ||
-		typeof source.path !== "string"
+		typeof source.path !== "string" ||
+		typeof source.size !== "number"
 	) {
 		return null;
 	}
 
 	return source;
+}
+
+/** @param {number} bytes */
+function formatMegabytes(bytes) {
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
@@ -441,6 +449,19 @@ export default {
 			title: `Transcribing ${source.name}`,
 			timeoutMs: ACTIVITY_TIMEOUT_MS,
 		});
+
+		// Refuse a file that is too big before reading secrets, creating output files, or calling a
+		// provider. Then the refusal costs nothing and leaves no empty file behind.
+		if (kind === "video" && source.size > MODAL_MAX_SOURCE_BYTES) {
+			throw new Error(
+				`${source.name} is ${formatMegabytes(source.size)}. Videos can be at most 200 MB for a transcript. Trim the video or lower its quality, then upload it again.`,
+			);
+		}
+		if (kind === "audio" && source.size > MAX_AUDIO_BYTES) {
+			throw new Error(
+				`${source.name} is ${formatMegabytes(source.size)}. Audio files can be at most 500 MB for a transcript. Split the recording or lower its quality, then upload it again.`,
+			);
+		}
 
 		const mistralApiKey = await requireSecret(env, "MISTRAL_API_KEY");
 		const openaiApiKey = await requireSecret(env, "OPENAI_API_KEY");

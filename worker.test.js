@@ -352,7 +352,7 @@ describe("worker fetch", () => {
 
 		expect(activityCalls).toHaveLength(1);
 		expect(activityCalls[0].headers.Authorization).toBe("Bearer run-token");
-		expect(activityCalls[0].body).toEqual({ title: "Transcribing meeting.mp4", timeoutMs: 5 * 60 * 1000 });
+		expect(activityCalls[0].body).toEqual({ title: "Transcribing meeting.mp4", timeoutMs: 3 * 60 * 1000 });
 
 		expect(touchCalls).toHaveLength(1);
 		expect(touchCalls[0].body).toEqual({
@@ -410,6 +410,19 @@ describe("worker fetch", () => {
 		await expect(worker.fetch(uploadRequest(), env)).rejects.toThrow("MISTRAL_API_KEY secret is not configured");
 		// The activity starts before the secret reads so the failure shows in the feed,
 		// but no file may appear.
+		expect(activityCalls).toHaveLength(1);
+		expect(touchCalls).toHaveLength(0);
+		expect(writeCalls).toHaveLength(0);
+		expect(fetches).toHaveLength(0);
+	});
+
+	it("refuses a video over 200 MB before reading secrets, creating files, or calling providers", async () => {
+		const { fetches, activityCalls, touchCalls, writeCalls } = stubFetch();
+		// A missing secret proves the size check runs first: its error would win otherwise.
+		const env = stubEnv({ secrets: { MISTRAL_API_KEY: null } });
+		await expect(worker.fetch(uploadRequest({ size: 201 * 1024 * 1024 }), env)).rejects.toThrow(
+			"meeting.mp4 is 201.0 MB. Videos can be at most 200 MB for a transcript. Trim the video or lower its quality, then upload it again.",
+		);
 		expect(activityCalls).toHaveLength(1);
 		expect(touchCalls).toHaveLength(0);
 		expect(writeCalls).toHaveLength(0);

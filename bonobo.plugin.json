@@ -2,7 +2,7 @@
 	"schemaVersion": 1,
 	"name": "video",
 	"displayName": "Video",
-	"version": "0.3.5",
+	"version": "0.3.6",
 	"description": "Generates diarized transcripts and summaries for uploaded videos and audio recordings.",
 	"compatibility": {
 		"bonoboPluginRuntime": "1"
@@ -52,8 +52,8 @@
 	"files": [
 		{
 			"path": "dist/backend/worker.js",
-			"sha256": "sha256:6545bbcd39ef0118d7032b85fd811f9ebaad782e03c864ace2d3b02cc43a786b",
-			"bytes": 16565,
+			"sha256": "sha256:276acfe666914706e5711985d527b0eff8726bc5174ac1c488f63623ea1d76f3",
+			"bytes": 17499,
 			"contentType": "application/javascript"
 		}
 	]
