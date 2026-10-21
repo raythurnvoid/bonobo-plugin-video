@@ -13,13 +13,13 @@
 		"deploy:modal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/modal-cli.ps1 deploy modal/media_audio_extractor.py"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260410.1",
-		"@eslint/js": "^9.39.1",
-		"bonobo-plugin-sdk": "github:raythurnvoid/bonobo-plugin-sdk#d2d87f1e62df837e505643d433b99b768b0a47aa",
-		"eslint": "^9.39.1",
-		"globals": "^16.5.0",
-		"typescript": "^7.0.2",
-		"vitest": "4.1.10"
+		"@cloudflare/workers-types": "5.20261019.1",
+		"@eslint/js": "10.0.1",
+		"bonobo-plugin-sdk": "github:raythurnvoid/bonobo-plugin-sdk#ea875be3eaf4c51df85233a52fad095b8625c1b5",
+		"eslint": "10.13.0",
+		"globals": "17.13.0",
+		"typescript": "7.0.2",
+		"vitest": "5.0.5"
 	},
-	"packageManager": "pnpm@10.33.0"
+	"packageManager": "pnpm@12.14.0"
 }
