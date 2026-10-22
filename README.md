@@ -12,6 +12,8 @@ First-party Bonobo workspace plugin that generates a diarized transcript (`<name
 
 All AI calls are plugin-owned outbound requests; the plugin uses no host `ai.*` capabilities.
 
+Videos over 200 MB (the Modal extractor's limit) and audio files over 500 MB (Mistral's limit) are refused before any work. The run fails with a message that names the file and its size, and no transcript or summary file is created.
+
 ## Configuration
 
 Each installation can edit the manifest-defined YAML. `triggers.files.upload.completed.folders` lists the absolute folders that start automatic video or audio runs. A folder includes its descendants. `/` matches every folder, and an empty list disables automatic runs. Manual runs ignore this filter.
